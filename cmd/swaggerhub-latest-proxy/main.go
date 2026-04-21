@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -34,7 +36,11 @@ type Config struct {
 	} `yaml:"server"`
 
 	Auth struct {
-		APIKey string `yaml:"api_key"`
+		APIKey    string `yaml:"api_key"`
+		BasicAuth struct {
+			Username string `yaml:"username"`
+			Password string `yaml:"password"`
+		} `yaml:"basic_auth"`
 	} `yaml:"auth"`
 
 	SwaggerHub struct {
@@ -91,12 +97,21 @@ func loadConfig(path string) (*Config, error) {
 	if v := os.Getenv("AUTH_API_KEY"); v != "" {
 		cfg.Auth.APIKey = v
 	}
+	if v := os.Getenv("AUTH_BASIC_AUTH_USERNAME"); v != "" {
+		cfg.Auth.BasicAuth.Username = v
+	}
+	if v := os.Getenv("AUTH_BASIC_AUTH_PASSWORD"); v != "" {
+		cfg.Auth.BasicAuth.Password = v
+	}
 
 	if cfg.SwaggerHub.APIKey == "" {
 		return nil, errors.New("swaggerhub.api_key (or SWAGGERHUB_API_KEY env) is required")
 	}
 	if len(cfg.APIs) == 0 {
 		return nil, errors.New("at least one entry under `apis` is required")
+	}
+	if (cfg.Auth.BasicAuth.Username == "") != (cfg.Auth.BasicAuth.Password == "") {
+		return nil, errors.New("auth.basic_auth (or AUTH_BASIC_AUTH_*) requires both username and password")
 	}
 
 	return &cfg, nil
@@ -327,17 +342,55 @@ func (c *cache) setYAML(key string, data []byte) {
 // HTTP layer
 // -----------------------------------------------------------------------------
 
-// apiKeyAuth returns a middleware that requires the X-API-Key request header
-// to match the configured key. Comparison is constant-time to avoid leaking
-// the key through response timing.
-func apiKeyAuth(key string) fiber.Handler {
-	expected := []byte(key)
+func matchesAPIKey(header, expected string) bool {
+	return subtle.ConstantTimeCompare([]byte(header), []byte(expected)) == 1
+}
+
+func matchesBasicAuth(header, expectedUsername, expectedPassword string) bool {
+	if header == "" {
+		return false
+	}
+	const prefix = "Basic "
+	if !strings.HasPrefix(header, prefix) {
+		return false
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(header[len(prefix):])
+	if err != nil {
+		return false
+	}
+
+	username, password, ok := strings.Cut(string(decoded), ":")
+	if !ok {
+		return false
+	}
+
+	return subtle.ConstantTimeCompare([]byte(username), []byte(expectedUsername)) == 1 &&
+		subtle.ConstantTimeCompare([]byte(password), []byte(expectedPassword)) == 1
+}
+
+// requestAuth returns a middleware that accepts any configured auth scheme:
+// X-API-Key, Basic Auth, or both. When both are enabled, a request may use
+// either one.
+func requestAuth(apiKey, basicAuthUsername, basicAuthPassword string) fiber.Handler {
+	hasAPIKey := apiKey != ""
+	hasBasicAuth := basicAuthUsername != "" || basicAuthPassword != ""
+
 	return func(c fiber.Ctx) error {
-		got := []byte(c.Get("X-API-Key"))
-		if subtle.ConstantTimeCompare(got, expected) != 1 {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+		if !hasAPIKey && !hasBasicAuth {
+			return c.Next()
 		}
-		return c.Next()
+
+		if hasAPIKey && matchesAPIKey(c.Get("X-API-Key"), apiKey) {
+			return c.Next()
+		}
+
+		if hasBasicAuth && matchesBasicAuth(c.Get(fiber.HeaderAuthorization), basicAuthUsername, basicAuthPassword) {
+			return c.Next()
+		}
+
+		c.Set(fiber.HeaderWWWAuthenticate, `Basic realm="swaggerhub-latest-proxy"`)
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
 }
 
@@ -496,9 +549,9 @@ func main() {
 	app.Use(logger.New())
 	app.Use(cors.New())
 
-	if cfg.Auth.APIKey != "" {
-		app.Use("/swagger", apiKeyAuth(cfg.Auth.APIKey))
-		log.Info("api key auth enabled")
+	if cfg.Auth.APIKey != "" || (cfg.Auth.BasicAuth.Username != "" && cfg.Auth.BasicAuth.Password != "") {
+		app.Use("/swagger", requestAuth(cfg.Auth.APIKey, cfg.Auth.BasicAuth.Username, cfg.Auth.BasicAuth.Password))
+		log.Info("request auth enabled")
 	}
 
 	app.Get("/swagger/:apiKey.json", srv.handleJSON)

@@ -35,27 +35,55 @@ the `CONFIG_PATH` environment variable.
 
 ## Authentication (optional)
 
-If `auth.api_key` is set in the config (or `AUTH_API_KEY` in the
-environment), every request to `/swagger/*` must include a matching
-`X-API-Key` header:
+The proxy supports four request authentication modes for `/swagger/*`:
+
+- no auth configured;
+- API key only via `auth.api_key` or `AUTH_API_KEY`;
+- Basic Auth only via `auth.basic_auth` or
+  `AUTH_BASIC_AUTH_USERNAME` / `AUTH_BASIC_AUTH_PASSWORD`;
+- both enabled at once, in which case either method is accepted.
+
+API key example:
 
 ```sh
 curl -H "X-API-Key: $AUTH_API_KEY" http://localhost:3000/swagger/users.json
 ```
 
-`/healthz` stays public regardless. When `auth.api_key` is empty or missing,
-the proxy serves every request without checks.
+Basic Auth example:
+
+```sh
+curl -u "$AUTH_BASIC_AUTH_USERNAME:$AUTH_BASIC_AUTH_PASSWORD" \
+  http://localhost:3000/swagger/users.json
+```
+
+Config example:
+
+```yaml
+auth:
+  api_key: "dOzZV8zemf/ECttvWuMPAisqkZ1WN7fwKWqryY095iM="
+  basic_auth:
+    username: "username"
+    password: "password"
+```
+
+`/healthz` stays public regardless. If only one of
+`auth.basic_auth.username` / `auth.basic_auth.password` is set, startup fails
+because Basic Auth requires both fields.
 
 ## Run
 
 ```sh
 go run cmd/swaggerhub-latest-proxy/main.go
+
 # or
+
 docker build -t swaggerhub-latest-proxy .
 docker run -p 3000:3000 \
   -e SWAGGERHUB_API_KEY=$SWAGGERHUB_API_KEY \
   swaggerhub-latest-proxy
+
 # or
+
 docker run -p 3000:3000 \
   -e SWAGGERHUB_API_KEY=$SWAGGERHUB_API_KEY \
   ghcr.io/hu553in/swaggerhub-latest-proxy

@@ -3,6 +3,9 @@ server:
 
 auth:
   api_key: "yMZIVYvo57YG54vUz4DJu2U4SePd6cAfwcQxwlHvKqo="
+  basic_auth:
+    username: "user"
+    password: "password"
 
 swaggerhub:
   api_key: "019dad7f-642e-7355-b008-da9887fb2499"
