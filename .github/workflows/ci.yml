@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v9
+
+  vulncheck:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: golang/govulncheck-action@v1
+        with:
+          go-version-file: go.mod
+
+  publish:
+    if: startsWith(github.ref, 'refs/heads/main')
+    needs: [lint, vulncheck, test]
+    uses: hu553in/common-things/.github/workflows/build-publish-docker.yml@main
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image: ghcr.io/${{ github.repository }}
+
+  attest:
+    needs: publish
+    uses: hu553in/common-things/.github/workflows/attest-docker.yml@main
+    permissions:
+      packages: write
+      id-token: write
+      attestations: write
+    with:
+      image: ghcr.io/${{ github.repository }}
+      digest: ${{ needs.publish.outputs.digest }}

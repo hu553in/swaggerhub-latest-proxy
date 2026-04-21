@@ -1,0 +1,70 @@
+version: 2
+
+registries:
+  ghcr:
+    type: docker-registry
+    url: https://ghcr.io
+    username: '${{github.repository_owner}}'
+    password: '${{secrets.GHCR_PAT}}'
+
+updates:
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 5
+    assignees:
+      - hu553in
+    commit-message:
+      prefix: 'deps(dependabot):'
+    allow:
+      - dependency-type: all
+    groups:
+      patch-and-minor:
+        update-types:
+          - patch
+          - minor
+      major:
+        update-types:
+          - major
+  - package-ecosystem: docker
+    directories:
+      - '/'
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 5
+    assignees:
+      - hu553in
+    commit-message:
+      prefix: 'deps(dependabot):'
+    registries:
+      - ghcr
+    allow:
+      - dependency-type: all
+    groups:
+      patch-and-minor:
+        update-types:
+          - patch
+          - minor
+      major:
+        update-types:
+          - major
+  - package-ecosystem: gomod
+    directory: '/'
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 5
+    assignees:
+      - hu553in
+    commit-message:
+      prefix: 'deps(dependabot):'
+    allow:
+      - dependency-type: all
+    groups:
+      patch-and-minor:
+        update-types:
+          - patch
+          - minor
+      major:
+        update-types:
+          - major

@@ -1,0 +1,20 @@
+server:
+  port: "3000"
+
+auth:
+  api_key: "yMZIVYvo57YG54vUz4DJu2U4SePd6cAfwcQxwlHvKqo="
+
+swaggerhub:
+  api_key: "019dad7f-642e-7355-b008-da9887fb2499"
+  timeout: 20s
+
+cache:
+  ttl: 5m
+
+apis:
+  users:
+    owner: my-org
+    name: users-api
+  billing:
+    owner: my-org
+    name: billing-api
