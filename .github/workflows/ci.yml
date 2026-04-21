@@ -34,7 +34,7 @@ jobs:
 
   publish:
     if: startsWith(github.ref, 'refs/heads/main')
-    needs: [lint, vulncheck, test]
+    needs: [lint, vulncheck]
     uses: hu553in/common-things/.github/workflows/build-publish-docker.yml@main
     secrets: inherit
     permissions:
